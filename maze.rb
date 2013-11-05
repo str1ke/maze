@@ -5,22 +5,26 @@ class Maze
   attr_accessor :grid, :grid_size_x, :grid_size_y, :x, :y, :win
 
   GRAY = Gosu::Color::GRAY
-  BOX_SIZE     = 50
+  BOX_SIZE     = 20
   BORDER_WIDTH = 3
 
   N = 1 << 0
   E = 1 << 1
   S = 1 << 2
   W = 1 << 3
-  VISITED     = 1 << 4
-  INITIALIZED = 1 << 5
-  MASK        = 0b11111111
+  VISITED = 1 << 4
+
   OPPOSITE = { N => S, S => N, E => W, W => E }
+
+  # N, S, E, W = 1, 2, 4, 8
+  # DX         = { E => 1, W => -1, N =>  0, S => 0 }
+  # DY         = { E => 0, W =>  0, N => -1, S => 1 }
+  # OPPOSITE   = { E => W, W =>  E, N =>  S, S => N }
 
   def initialize(win = nil, n = 3, m = 3)
     @grid_size_x = n
     @grid_size_y = m
-    @grid = Array.new(@grid_size_x) { Array.new(@grid_size_y) { MASK } }
+    @grid = Array.new(@grid_size_y) { Array.new(@grid_size_x) { 0 } }
 
     @x = 10
     @y = 10
@@ -29,92 +33,141 @@ class Maze
     generate_maze
   end
 
-  def generate_maze    
-    # @grid_size_x.times do |i|
-    #   @grid_size_y.times { |j| grid[i][j] = random_box }
-    # end
-    
-    # grid[0][0] = S
-    # grid[0][1] = E
-    # grid[0][2] = S | W
-    # grid[1][0] = N | S
-    # grid[1][1] = E | S
-    # grid[1][2] = N | W | S
-    # grid[2][0] = N | E
-    # grid[2][1] = N | W
-    # grid[2][2] = N
+  def generate_maze
+    gen_path_from(0, 0)
 
-    x = 0
-    y = 0
-    prev_direction = nil
+    while point = find_starting_point
+      gen_path_from(point[0], point[1])
+    end
+  end
 
-    9.times do
-      box_neighbours = neighbours(x, y)
-      # ap box_neighbours
+  def first_step
+    # @grid[0][0] |= S | E | VISITED
+    # @grid[0][1] |= S | W | VISITED
+    #@grid[0][2] |= N | VISITED
+    # @grid[1][0] |= N | VISITED
+    # @grid[1][1] |= N | E | VISITED
+    # @grid[1][2] |= S | W | VISITED
+    # @grid[2][0] |= E | VISITED
+    # @grid[2][1] |= E | W | VISITED
+    # @grid[2][2] |= N | W | VISITED
 
-      can_go_to = have_pass(box_neighbours)
-      # ap can_go_to
+    point = find_starting_point
+    ap point
+    #gen_path_from(point[0], point[1])
+  end
 
-      unless can_go_to.empty?
-        direction = can_go_to.sample
-        ap direction
+  def next_step
+    point = find_starting_point
+    gen_path_from(point[0], point[1])
+  end
 
-        grid[y][x] = VISITED | self.class.const_get(direction)
-        grid[y][x] |= Maze::OPPOSITE[self.class.const_get(prev_direction)] if prev_direction
+  def find_starting_point
+    point = nil
 
-        y -= 1 if direction == 'N'
-        y += 1 if direction == 'S'
-        x += 1 if direction == 'E'
-        x -= 1 if direction == 'W'
+    @grid.each_with_index do |line, y|
+      line.each_with_index do |box, x|
+        next if have_state(box, VISITED)
 
-        prev_direction = direction
+        neighbours_directions = directions(x, y).select do |d|
+          have_state(box_by_direction(x, y, d), VISITED)
+        end
+        next if neighbours_directions.empty?
+
+        neib = neighbours_directions.sample
+        case neib
+          when 'N'
+            grid[y - 1][x] |= (self.class.const_get('OPPOSITE')[self.class.const_get(neib)] | VISITED)
+          when 'E'
+            grid[y][x + 1] |= (self.class.const_get('OPPOSITE')[self.class.const_get(neib)] | VISITED)
+          when 'S'
+            grid[y + 1][x] |= (self.class.const_get('OPPOSITE')[self.class.const_get(neib)] | VISITED)
+          when 'W'
+            grid[y][x - 1] |= (self.class.const_get('OPPOSITE')[self.class.const_get(neib)] | VISITED)
+        end
+
+        grid[y][x] |= self.class.const_get(neib)
+        grid[y][x] |= VISITED
+
+        can_go = where_can_go(x, y)
+        next if can_go.empty?
+
+        point = [x, y]
+        return point
       end
     end
 
-    # grid[0][0] = 1
-    # grid[0][1] = 2
-    # grid[0][2] = 3
-    # grid[1][0] = 4
-    # grid[1][1] = 5
-    # grid[1][2] = 6
-    # grid[2][0] = 7
-    # grid[2][1] = 8
-    # grid[2][2] = 9
+    point
   end
 
-  def box_directions box
-    directions = []
+  def gen_path_from(x, y, debug = nil)
+    can_go_to = where_can_go x, y
 
-    [N, E, S, W].each do |dir|
-      directions << dir if (box & dir) != 0
+    until can_go_to.empty?
+      direction = can_go_to.sample
+      go x, y, direction
+
+      break if debug
+
+      y -= 1 if direction == 'N'
+      y += 1 if direction == 'S'
+      x += 1 if direction == 'E'
+      x -= 1 if direction == 'W'
+
+      can_go_to = where_can_go x, y
     end
-
-    directions
   end
 
-  def neighbours(x, y)
+  def have_passes box
+    [N, E, S, W].select { |dir| have_state(box, dir) }
+  end
+
+  def directions(x, y)
     neib = []
-    #top
-    neib << [ 'N', grid[y - 1][x] ] if y - 1 >= 0
 
-    #right
-    neib << [ 'E', grid[y][x + 1] ] if x + 1 < @grid_size_x
-
-    #bottom
-    neib << [ 'S', grid[y + 1][x] ] if y + 1 < @grid_size_y
-
-    #left
-    neib << [ 'W', grid[y][x - 1] ] if x - 1 >= 0
+    neib << 'N' if y - 1 >= 0
+    neib << 'E' if x + 1 < @grid_size_x
+    neib << 'S' if y + 1 < @grid_size_y
+    neib << 'W' if x - 1 >= 0
 
     neib
   end
 
-  def have_pass(neighbours)
-    neighbours.map { |dir, box| dir if (box_directions(box).include? self.class::OPPOSITE[self.class.const_get(dir)]) }.compact
+  def where_can_go(x, y)
+    directions(x,y).reject { |d| have_state(box_by_direction(x, y, d), VISITED) }
   end
 
-  def is_visited(x, y)
-    grid[y][x] & VISITED != 0
+  def go(x, y, direction)
+    @grid[y][x] |= self.class.const_get(direction)
+    @grid[y][x] |= VISITED
+
+    case direction
+      when 'N'
+        @grid[y - 1][x] |= self.class.const_get('OPPOSITE')[self.class.const_get(direction)]
+      when 'E'
+        @grid[y][x + 1] |= self.class.const_get('OPPOSITE')[self.class.const_get(direction)]
+      when 'S'
+        @grid[y + 1][x] |= self.class.const_get('OPPOSITE')[self.class.const_get(direction)]
+      when 'W'
+        @grid[y][x - 1] |= self.class.const_get('OPPOSITE')[self.class.const_get(direction)]
+    end
+  end
+
+  def box_by_direction(x, y, direction)
+    case direction
+      when 'N'
+        @grid[y - 1][x]
+      when 'E'
+        @grid[y][x + 1]
+      when 'S'
+        @grid[y + 1][x]
+      when 'W'
+        @grid[y][x - 1]
+    end
+  end
+
+  def have_state(box, state)
+    box & state != 0
   end
 
   def random_box
@@ -124,13 +177,12 @@ class Maze
     box
   end
 
-
   def draw_box(x, y, box)
     pos_x = @x + x * BOX_SIZE - x * BORDER_WIDTH
     pos_y = @y + y * BOX_SIZE - y * BORDER_WIDTH
 
     # calc walls
-    walls = box_directions(box ^ 0b1111)
+    walls = have_passes(box ^ 0b1111)
 
     draw_vline(pos_x, pos_y) if walls.include? W
     draw_hline(pos_x, pos_y) if walls.include? N

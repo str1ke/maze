@@ -9,12 +9,12 @@ class Game < Gosu::Window
     super WIN_WIDTH, WIN_HEIGHT, false
     self.caption = 'Mega Maze 3000'
 
-    @maze = Maze.new self, 20, 40
+    @maze = Maze.new self, 50, 50
   end
   
   def update
-    if button_down? Gosu::KbR then
-      @maze = Maze.new self, 20, 40
+    if button_down? Gosu::KbR
+      @maze = Maze.new self, 4, 4
     end
   
     if button_down? Gosu::KbQ
