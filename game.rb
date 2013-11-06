@@ -6,18 +6,23 @@ class Game < Gosu::Window
   WIN_WIDTH  = 1920
 
   def initialize
-    super WIN_WIDTH, WIN_HEIGHT, false
-    self.caption = 'Mega Maze 3000'
+    super WIN_WIDTH, WIN_HEIGHT, true
+    self.caption = 'Terminal'
 
-    @maze = Maze.new self, 50, 50
+    @maze = Maze.new self, 110, 55
   end
   
-  def update
-    if button_down? Gosu::KbR
-      @maze = Maze.new self, 4, 4
-    end
-  
-    if button_down? Gosu::KbQ
+  def button_down(id)
+    case id
+    when Gosu::KbR
+      @maze.generate_new
+    when Gosu::KbE
+      @maze.clean
+    when Gosu::KbN
+      @maze.next_step
+    when Gosu::KbC
+      @maze.color = !@maze.color
+    when Gosu::KbQ
       close
     end
   end
