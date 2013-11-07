@@ -13,7 +13,7 @@ class Game < Gosu::Window
     self.caption = CAPTION
 
     #@profiler = MethodProfiler.observe(Maze)
-    @maze = Maze.new self, 3
+    @maze = Maze.new self, 40
   end
   
   def button_down(id)
@@ -29,9 +29,11 @@ class Game < Gosu::Window
     when Gosu::KbQ
       close
     when Gosu::KbMinus
-      @maze.set_box_size(@maze.decrease_box_size).generate_new
+      @maze.set_box_size(@maze.decrease_box_size)
+      @maze.generate_new
     when Gosu::KbEqual
-      @maze.set_box_size(@maze.increase_box_size).generate_new
+      @maze.set_box_size(@maze.increase_box_size)
+      @maze.generate_new
     end
   end
 

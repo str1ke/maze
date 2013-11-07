@@ -72,7 +72,13 @@ class Maze
 
   def generate_new
     clean
+
+    start = Time.new
     generate_maze
+    generated_by = Time.new - start
+
+    puts "cells: #{@grid_size_x*@grid_size_x}"
+    puts "generate time: #{generated_by}"
   end
 
   def next_step
@@ -97,9 +103,9 @@ class Maze
   def find_starting_point
     point = nil
 
-    @grid.each_with_index do |line, y|
-      line.each_with_index do |box, x|
-        next if have_state(box, VISITED)
+    for y in @last_y..(@grid_size_y - 1)
+      for x in @last_x..(@grid_size_x - 1)
+        next if have_state(@grid[y][x], VISITED)
 
         visited_neighbours = directions(x, y).select do |d|
           have_state(box_by_direction(x, y, d), VISITED)
@@ -108,13 +114,17 @@ class Maze
 
         can_go = where_can_go(x, y)
         if can_go.empty?
-          go(x, y, visited_neighbours.sample, YELLOW) if !have_state(box, VISITED)
+          go(x, y, visited_neighbours.sample, YELLOW) if !have_state(@grid[y][x], VISITED)
           next
         end
 
         go(x, y, visited_neighbours.sample, YELLOW)
+
+        @last_y = y
+        @last_x = x
         return [x, y]
       end
+      @last_x = 0
     end
 
     point
@@ -194,6 +204,8 @@ class Maze
   def clean
     @grid = Array.new(@grid_size_y) { Array.new(@grid_size_x) { 0 } }
     @first_step = true
+    @last_y = 0
+    @last_x = 0
   end
 
   def draw_vline(x, y)
