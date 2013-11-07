@@ -1,8 +1,7 @@
 require 'gosu'
-require 'awesome_print'
 
 class Maze
-  attr_accessor :grid, :color
+  attr_accessor :grid, :color, :box_size, :border_width
 
   WALL_COLOR   = Gosu::Color::GRAY
   GREEN_COLOR  = Gosu::Color.argb(0xff3BFF48)
@@ -10,9 +9,6 @@ class Maze
   RED_COLOR    = Gosu::Color.argb(0xffFF7585)
   BLUE_COLOR   = Gosu::Color.argb(0xff85C6FF)
   BLACK_COLOR  = Gosu::Color::BLACK
-
-  BOX_SIZE     = 20
-  BORDER_WIDTH = 3
 
   N        = 1 << 0
   E        = 1 << 1
@@ -29,15 +25,49 @@ class Maze
   DY       = { E => 0, W =>  0, N => -1, S => 1 }
   OPPOSITE = { N => S, S => N, E => W, W => E }
 
-  def initialize(win = nil, n = 3, m = 3)
-    @grid_size_x = n
-    @grid_size_y = m
-    @x = 10
-    @y = 10
+  def initialize(win = nil, b_size)
+    @x = 0
+    @y = 0
     @win = win
     @color = true
 
+    set_box_size(b_size)
     generate_new
+  end
+
+  def box_size=(val)
+    if val < 10
+      scale_factor = 5
+    else
+      scale_factor = 10
+    end
+    b_width = val / scale_factor
+    b_width = 1 if b_width < 1
+
+    @box_size = val
+    @border_width = b_width
+  end
+
+  def set_box_size(b_size)
+    self.box_size = b_size
+
+    row_count = @win.height / (b_size - border_width)
+    col_count = @win.width / (b_size - border_width)
+
+    @grid_size_x = col_count
+    @grid_size_y = row_count
+  end
+
+  def decrease_box_size
+    self.box_size -= step
+  end
+
+  def increase_box_size
+    self.box_size += step
+  end
+
+  def step
+    (box_size >= 5 && box_size < 10) ? 2 : 5
   end
 
   def generate_new
@@ -47,21 +77,21 @@ class Maze
 
   def next_step
     if @first_step
-      gen_path_from(0, 0, GREEN) 
-      @first_step = false      
+      gen_path_from(0, 0, YELLOW)
+      @first_step = false
+      true
     else
       if point = find_starting_point
         gen_path_from(point[0], point[1], YELLOW)
+        true
+      else
+        false
       end
     end
   end
 
   def generate_maze
-    gen_path_from(0, 0, GREEN)
-
-    while point = find_starting_point
-      gen_path_from(point[0], point[1], YELLOW)
-    end
+    nil while next_step
   end
 
   def find_starting_point
@@ -78,11 +108,11 @@ class Maze
 
         can_go = where_can_go(x, y)
         if can_go.empty?
-          go(x, y, visited_neighbours.sample, BLUE) if !have_state(box, VISITED)
+          go(x, y, visited_neighbours.sample, YELLOW) if !have_state(box, VISITED)
           next
         end
 
-        go(x, y, visited_neighbours.sample, RED)
+        go(x, y, visited_neighbours.sample, YELLOW)
         return [x, y]
       end
     end
@@ -137,8 +167,8 @@ class Maze
   end
 
   def draw_box(x, y, box)
-    pos_x = @x + x * BOX_SIZE - x * BORDER_WIDTH
-    pos_y = @y + y * BOX_SIZE - y * BORDER_WIDTH
+    pos_x = @x + x * box_size - x * border_width
+    pos_y = @y + y * box_size - y * border_width
 
     # calc walls
     walls = have_passes(box ^ 0b1111)
@@ -146,8 +176,8 @@ class Maze
     background(pos_x, pos_y, box_color(box))
     draw_vline(pos_x, pos_y) if walls.include? W
     draw_hline(pos_x, pos_y) if walls.include? N
-    draw_vline(pos_x + BOX_SIZE - BORDER_WIDTH, pos_y) if walls.include? E
-    draw_hline(pos_x, pos_y + BOX_SIZE - BORDER_WIDTH) if walls.include? S
+    draw_vline(pos_x + box_size - border_width, pos_y) if walls.include? E
+    draw_hline(pos_x, pos_y + box_size - border_width) if walls.include? S
   end
 
   def box_color(box)
@@ -155,8 +185,8 @@ class Maze
 
     return GREEN_COLOR  if have_state(box, GREEN)
     return YELLOW_COLOR if have_state(box, YELLOW)
-    return RED_COLOR if have_state(box, RED)
-    return BLUE_COLOR if have_state(box, BLUE)
+    return RED_COLOR    if have_state(box, RED)
+    return BLUE_COLOR   if have_state(box, BLUE)
 
     return BLACK_COLOR
   end
@@ -169,27 +199,27 @@ class Maze
   def draw_vline(x, y)
     @win.draw_quad(
       x, y, WALL_COLOR,
-      x + BORDER_WIDTH, y, WALL_COLOR,
-      x, y + BOX_SIZE, WALL_COLOR,
-      x + BORDER_WIDTH, y + BOX_SIZE, WALL_COLOR, 2
+      x + border_width, y, WALL_COLOR,
+      x, y + box_size, WALL_COLOR,
+      x + border_width, y + box_size, WALL_COLOR, 2
     )
   end
 
   def draw_hline(x, y)
     @win.draw_quad(
       x, y, WALL_COLOR,
-      x + BOX_SIZE, y, WALL_COLOR,
-      x, y + BORDER_WIDTH, WALL_COLOR,
-      x + BOX_SIZE, y + BORDER_WIDTH, WALL_COLOR, 2
+      x + box_size, y, WALL_COLOR,
+      x, y + border_width, WALL_COLOR,
+      x + box_size, y + border_width, WALL_COLOR, 2
     )
   end
 
   def background(x, y, c)
     @win.draw_quad(
       x, y, c,
-      x + BOX_SIZE, y, c,
-      x, y + BOX_SIZE, c,
-      x + BOX_SIZE, y + BOX_SIZE, c, 1
+      x + box_size, y, c,
+      x, y + box_size, c,
+      x + box_size, y + box_size, c, 1
     )
   end
 
@@ -197,9 +227,6 @@ class Maze
     @grid.each_with_index do |line, y|
       line.each_with_index do |box, x|
         draw_box x, y, box
-        if !have_state box, VISITED
-          ap "#{x}, #{y}, #{box}"
-        end
       end
     end
   end
