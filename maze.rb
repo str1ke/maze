@@ -1,7 +1,7 @@
 require 'gosu'
 
 class Maze
-  attr_accessor :grid, :color, :box_size, :border_width
+  attr_accessor :grid, :color, :box_size, :border_width, :solved
 
   WALL_COLOR   = Gosu::Color::GRAY
   GREEN_COLOR  = Gosu::Color.argb(0xff3BFF48)
@@ -15,15 +15,16 @@ class Maze
   S        = 1 << 2
   W        = 1 << 3
   VISITED  = 1 << 4
+  SCANNED  = 1 << 5
 
-  GREEN    = 1 << 5
-  YELLOW   = 1 << 6
-  RED      = 1 << 7
-  BLUE     = 1 << 8
+  GREEN    = 1 << 6
+  YELLOW   = 1 << 7
+  RED      = 1 << 8
+  BLUE     = 1 << 9
 
   DX       = { E => 1, W => -1, N =>  0, S => 0 }
   DY       = { E => 0, W =>  0, N => -1, S => 1 }
-  OPPOSITE = { N => S, S => N, E => W, W => E }
+  OPPOSITE = { N => S, S =>  N, E =>  W, W => E }
 
   def initialize(win = nil, b_size)
     @x = 0
@@ -52,22 +53,22 @@ class Maze
     self.box_size = b_size
 
     row_count = @win.height / (b_size - border_width)
-    col_count = @win.width / (b_size - border_width)
+    col_count = @win.width  / (b_size - border_width)
 
     @grid_size_x = col_count
     @grid_size_y = row_count
   end
 
   def decrease_box_size
-    self.box_size -= step
+    set_box_size(box_size - step) if (box_size - step) >= 3
   end
 
   def increase_box_size
-    self.box_size += step
+    set_box_size(box_size + step)
   end
 
   def step
-    (box_size >= 5 && box_size < 10) ? 2 : 5
+    box_size < 10 ? 2 : 5
   end
 
   def generate_new
@@ -77,8 +78,7 @@ class Maze
     generate_maze
     generated_by = Time.new - start
 
-    puts "cells: #{@grid_size_x*@grid_size_x}"
-    puts "generate time: #{generated_by}"
+    puts "stat: #{@grid_size_x*@grid_size_x} cells, #{generated_by.round(2)} secs"
   end
 
   def next_step
@@ -105,16 +105,16 @@ class Maze
 
     for y in @last_y..(@grid_size_y - 1)
       for x in @last_x..(@grid_size_x - 1)
-        next if have_state(@grid[y][x], VISITED)
+        next if box_is(@grid[y][x], VISITED)
 
         visited_neighbours = directions(x, y).select do |d|
-          have_state(box_by_direction(x, y, d), VISITED)
+          box_is(box_by_direction(x, y, d), VISITED)
         end
         next if visited_neighbours.empty?
 
-        can_go = where_can_go(x, y)
+        can_go = where_can_go(x, y, VISITED)
         if can_go.empty?
-          go(x, y, visited_neighbours.sample, YELLOW) if !have_state(@grid[y][x], VISITED)
+          go(x, y, visited_neighbours.sample, YELLOW) if !box_is(@grid[y][x], VISITED)
           next
         end
 
@@ -131,7 +131,7 @@ class Maze
   end
 
   def gen_path_from(x, y, color = 0)
-    can_go_to = where_can_go x, y
+    can_go_to = where_can_go x, y, VISITED
 
     until can_go_to.empty?
       direction = can_go_to.sample
@@ -140,12 +140,12 @@ class Maze
       x += DX[direction]
       y += DY[direction]
 
-      can_go_to = where_can_go x, y
+      can_go_to = where_can_go x, y, VISITED
     end
   end
 
   def have_passes box
-    [N, E, S, W].select { |dir| have_state(box, dir) }
+    [N, E, S, W].select { |dir| box_is(box, dir) }
   end
 
   def directions(x, y)
@@ -159,8 +159,11 @@ class Maze
     neib
   end
 
-  def where_can_go(x, y)
-    directions(x, y).reject { |d| have_state(box_by_direction(x, y, d), VISITED) }
+  def where_can_go(x, y, state = nil, count_walls = false)
+    sides = directions(x, y)
+    sides.reject! { |d| box_is(box_by_direction(x, y, d), state) } if state
+    sides.select! { |d| box_is(@grid[y][x], d) } if count_walls
+    sides
   end
 
   def go(x, y, direction, color)
@@ -172,7 +175,7 @@ class Maze
     @grid[y + DY[direction]][x + DX[direction]]
   end
 
-  def have_state(box, state)
+  def box_is(box, state)
     box & state != 0
   end
 
@@ -193,10 +196,10 @@ class Maze
   def box_color(box)
     return BLACK_COLOR unless color
 
-    return GREEN_COLOR  if have_state(box, GREEN)
-    return YELLOW_COLOR if have_state(box, YELLOW)
-    return RED_COLOR    if have_state(box, RED)
-    return BLUE_COLOR   if have_state(box, BLUE)
+    return GREEN_COLOR  if box_is(box, GREEN)
+    return YELLOW_COLOR if box_is(box, YELLOW)
+    return RED_COLOR    if box_is(box, RED)
+    return BLUE_COLOR   if box_is(box, BLUE)
 
     return BLACK_COLOR
   end
@@ -206,6 +209,7 @@ class Maze
     @first_step = true
     @last_y = 0
     @last_x = 0
+    @solved = false
   end
 
   def draw_vline(x, y)
@@ -242,4 +246,67 @@ class Maze
       end
     end
   end
+
+  def solve(x = 0, y = 0, end_x = @grid_size_x-1, end_y = @grid_size_y-1)
+    return if solved
+    @solve_array = Array.new(@grid_size_y) { Array.new(@grid_size_x) }
+    current_step = 0
+    points, next_points, path = [], [], []
+
+    @solve_array[y][x]  = current_step
+    @grid[y][x]        |= (RED | SCANNED)
+    points << [x, y]
+
+    while !solved
+      current_step += 1
+
+      points.each do |(x, y)|
+        we_will_go = where_can_go(x, y, SCANNED, true)
+
+        we_will_go.each do |direction|
+          step_x = x + DX[direction]
+          step_y = y + DY[direction]
+          @grid[step_y][step_x] &= 0b0000111111
+          @grid[step_y][step_x] |= (RED | SCANNED)
+          @solve_array[step_y][step_x] = current_step
+          next_points << [step_x, step_y]
+
+          self.solved = true if (step_x == end_x && step_y == end_y)
+        end
+      end
+
+      points = next_points
+      next_points = []
+    end
+
+    path << [end_x, end_y]
+
+    while current_step != 0
+      last_point = path[-1]
+      current_step -= 1
+      points = points_with_score(current_step)
+      path << points.find do |(x, y)|
+        where_can_go(x, y, nil, true).any? { |d| (x + DX[d] == last_point[0]) && (y + DY[d] == last_point[1]) }
+      end
+    end
+
+    path.each do |(x, y)|
+      @grid[y][x] &= 0b0000111111
+      @grid[y][x] |= BLUE
+    end
+  end
+
+
+  def points_with_score(current_step)
+    points = []
+
+    for y in 0...@grid_size_y
+      for x in 0...@grid_size_x
+        points << [x, y] if @solve_array[y][x] == current_step
+      end
+    end
+
+    points
+  end
+
 end

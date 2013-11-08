@@ -26,13 +26,15 @@ class Game < Gosu::Window
       @maze.next_step
     when Gosu::KbC
       @maze.color = !@maze.color
+    when Gosu::KbS
+      @maze.solve
     when Gosu::KbQ
       close
     when Gosu::KbMinus
-      @maze.set_box_size(@maze.decrease_box_size)
+      @maze.decrease_box_size
       @maze.generate_new
     when Gosu::KbEqual
-      @maze.set_box_size(@maze.increase_box_size)
+      @maze.increase_box_size
       @maze.generate_new
     end
   end
